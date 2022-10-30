@@ -4,10 +4,8 @@
 #include <unistd.h>
 #include <string.h>
 
-pthread_t* tid;
-
 struct args_reducer{
-    int M, R;
+    int M, R, id;
     pthread_t* tid;
 };
 
@@ -52,20 +50,18 @@ void close_all_files(FILE*** input_files, int* N) {
     }
 }
 
-// void build_args_reducer_struct(struct args_reducer* args_reducer, int M, int R, int id, pthread_t* tid) {
-//     args_reducer->M = M;
-//     args_reducer->R = R;
-//     args_reducer->id = id;
+void build_args_reducer_struct(struct args_reducer* args_reducer, int M, int R, int id, pthread_t* tid) {
+    args_reducer->M = M;
+    args_reducer->R = R;
+    args_reducer->id = id;
     
-//     //args_reducer->tid = malloc(sizeof(pthread_t) * (M + R));
-//     //memcpy(args_reducer->tid, tid, sizeof(pthread_t) * (M + R));
-// }
+    args_reducer->tid = malloc(sizeof(pthread_t) * (M + R));
+    memcpy(args_reducer->tid, tid, sizeof(pthread_t) * (M + R));
+}
 
 void *mapper_function(void *arg) {
-    int thread_id = *(int *)arg;
-    printf("mapper start: %d\n", thread_id);
-    sleep(2);
-    printf("mapper %d is finished\n", thread_id);
+    //int thread_id = *(int *)arg;
+    
     pthread_exit(NULL);
 }
 
@@ -74,11 +70,9 @@ void *reducer_function(void *arg) {
     struct args_reducer* args_reducer = (struct args_reducer*) arg;
     
     for (int i = 0; i < args_reducer->M; i++) {
-        printf("mapper to wait: %d\n", i);
-        printf("ll:%d\n", pthread_join(tid[i], NULL));
+        pthread_join(args_reducer->tid[i], NULL);
 	}
 
-    printf("done\n");
     pthread_exit(NULL);
 }
 
@@ -92,18 +86,14 @@ int main(int argc, char* argv[]){
     parse_in(in, &input_files, &N);
 
     int thread_id[M + R];
-    tid = malloc(sizeof(pthread_t) * (M + R));
+    pthread_t* tid = malloc(sizeof(pthread_t) * (M + R));
 
     struct args_reducer args_reducer[R];
       
     for (int i = 0; i < M + R; i++) {
         thread_id[i] = i;
         if (i >= M) {
-            //build_args_reducer_struct(&args_reducer[i - R], M, R, i, tid);
-            args_reducer[M + R - i - 1].M = M;
-            args_reducer[M + R - i - 1].R = M;
-            //args_reducer[i - R].id = i;
-            args_reducer[M + R - i - 1].tid = tid;
+            build_args_reducer_struct(&args_reducer[M + R - i - 1], M, R, i, tid);
             pthread_create(&tid[i], NULL, reducer_function, &args_reducer[M + R - i - 1]);
         } else {
             pthread_create(&tid[i], NULL, mapper_function, &thread_id[i]);
@@ -111,12 +101,9 @@ int main(int argc, char* argv[]){
     }
 
     for (int i = M; i < M + R; i++) {
-        printf("here: %d\n", i);
 		pthread_join(tid[i], NULL);
-        printf("done here: %d\n", i);
 	}
 
-    printf("final\n");
     fclose(in);
     close_all_files(&input_files, &N);
     free(input_files);
