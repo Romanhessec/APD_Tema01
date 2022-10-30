@@ -110,7 +110,7 @@ int main(int argc, char* argv[]){
         }
     }
 
-    for (int i = 0; i < M + R; i++) {
+    for (int i = M; i < M + R; i++) {
         printf("here: %d\n", i);
 		pthread_join(tid[i], NULL);
         printf("done here: %d\n", i);
