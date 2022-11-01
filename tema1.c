@@ -12,6 +12,7 @@ bool done = false;
 struct args_reducer {
     int M, R, id;
     bool mutexed;
+    struct node*** mapper_results;
     pthread_t* tid;
 };
 
@@ -71,13 +72,15 @@ void close_all_files(FILE*** input_files, int* N) {
     }
 }
 
-void build_args_reducer_struct(struct args_reducer* args_reducer, int M, int R, int id, pthread_t* tid) {
+void build_args_reducer_struct(struct args_reducer* args_reducer, int M, int R, int id, pthread_t* tid,
+                                struct node*** mapper_result) {
     args_reducer->M = M;
     args_reducer->R = R;
     args_reducer->id = id;
     args_reducer->mutexed = false;
     args_reducer->tid = malloc(sizeof(pthread_t) * (M + R));
     memcpy(args_reducer->tid, tid, sizeof(pthread_t) * (M + R));
+    args_reducer->mapper_results = mapper_result;
 }
 
 void build_args_mapper_struct(struct args_mapper* args_mapper, int M, int R, int id, int N, FILE** input_files, 
@@ -164,6 +167,29 @@ void *reducer_function(void *arg) {
     } 
     pthread_mutex_unlock(&mutex);
     
+    // pthread_mutex_lock(&mutex);
+    // printf(":::%d:::\n", args_reducer->id);
+    
+    // for (int i = 0; i < args_reducer->M; i++) {
+    //     printf("%d\n", i);        
+    //     for (int j = 0; j < args_reducer->R; j++) {
+    //         for (; args_reducer->mapper_results[i][j] != NULL; args_reducer->mapper_results[i][j] = args_reducer->mapper_results[i][j]->next) {
+    //             printf("%d: %d\n", j + 2, args_reducer->mapper_results[i][j]->val);
+    //         }
+    //     }
+    // }
+    // pthread_mutex_unlock(&mutex);
+
+    pthread_mutex_lock(&mutex);
+    printf("id: %d\n", args_reducer->id);
+    for (int i = 0; i < args_reducer->M; i++) {
+        printf(":::%d:::\n", i);
+        for (; args_reducer->mapper_results[i][args_reducer->id - 2] != NULL; 
+         args_reducer->mapper_results[i][args_reducer->id - 2] = args_reducer->mapper_results[i][args_reducer->id - 2]->next) {
+            printf("%d: %d\n", args_reducer->id, args_reducer->mapper_results[i][args_reducer->id - 2]->val);
+        }
+    }
+    pthread_mutex_unlock(&mutex);
     pthread_exit(NULL);
 }
 
@@ -180,9 +206,10 @@ int main(int argc, char* argv[]){
 
     pthread_t* tid = malloc(sizeof(pthread_t) * (M + R));
 
-    struct node* mapper_results[M][R];
-
+    struct node*** mapper_results;
+    mapper_results = malloc(sizeof(struct node*) * M);
     for (int i = 0; i < M; i++) {
+        mapper_results[i] = malloc(sizeof(struct node*) * R);
         for (int j = 0; j < R; j++) {
             mapper_results[i][j] = NULL; //init, vezi cum merge add din list.c
         }
@@ -194,17 +221,26 @@ int main(int argc, char* argv[]){
     for (int i = 0; i < M + R; i++) {
 
         if (i >= M) {
-            build_args_reducer_struct(&args_reducers[M + R - i - 1], M, R, i, tid);
+            build_args_reducer_struct(&args_reducers[M + R - i - 1], M, R, i, tid, mapper_results);
             pthread_create(&tid[i], NULL, reducer_function, &args_reducers[M + R - i - 1]);
         } else {
             build_args_mapper_struct(&args_mappers[i], M, R, i, N, input_files, mapper_results[i]);
             pthread_create(&tid[i], NULL, mapper_function, &args_mappers[i]);
         }
     }
-    
+
     for (int i = M; i < M + R; i++) {
 		pthread_join(tid[i], NULL);
 	}
+
+    // for (int i = 0; i < M; i++) {
+    //     printf("%d\n", i);        
+    //     for (int j = 0; j < R; j++) {
+    //         for (; mapper_results[i][j] != NULL; mapper_results[i][j] = mapper_results[i][j]->next) {
+    //             printf("%d: %d\n", j + 2, mapper_results[i][j]->val);
+    //         }
+    //     }
+    // }
 
     fclose(in);
     free(input_files);
