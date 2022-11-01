@@ -133,8 +133,6 @@ void *mapper_function(void *arg) {
 
     char* line = malloc(sizeof(char) * 100);
 
-    //printf("suntem aici id: %d\n", args_mapper->id);
-
     for (int i = start; i < end; i++) {
 
         fgets(line, sizeof(char) * 100, args_mapper->input_files[i]);
@@ -157,15 +155,13 @@ void *mapper_function(void *arg) {
     }
 
     mappers_done++;
-    //printf("iesim de aici id: %d\n", args_mapper->id);
+
     pthread_exit(NULL);
 }
 
 void *reducer_function(void *arg) {
     
     struct args_reducer* args_reducer = (struct args_reducer*) arg;
-    
-//    printf("chips cu sare\n");  
 
     pthread_mutex_lock(&mutex);
     if (done == false) {
@@ -177,43 +173,26 @@ void *reducer_function(void *arg) {
         }
     }
     pthread_mutex_unlock(&mutex);
-    
-    
 
-    // pthread_mutex_lock(&mutex);
-    // printf(":::%d:::\n", args_reducer->id);
-    
-    // for (int i = 0; i < args_reducer->M; i++) {
-    //     printf("%d\n", i);        
-    //     for (int j = 0; j < args_reducer->R; j++) {
-    //         for (; args_reducer->mapper_results[i][j] != NULL; args_reducer->mapper_results[i][j] = args_reducer->mapper_results[i][j]->next) {
-    //             printf("%d: %d\n", j + 2, args_reducer->mapper_results[i][j]->val);
-    //         }
-    //     }
-    // }
-    // pthread_mutex_unlock(&mutex);
+    struct node** al = args_reducer->aggregate_list;
 
-    pthread_mutex_lock(&mutex);
-
-    // printf("id: %d\n", args_reducer->id);
-    // for (int i = 0; i < args_reducer->M; i++) {
-    //     printf(":::%d:::\n", i);
-    //     for (; args_reducer->mapper_results[i][args_reducer->id - 2] != NULL; 
-    //      args_reducer->mapper_results[i][args_reducer->id - 2] = args_reducer->mapper_results[i][args_reducer->id - 2]->next) {
-    //         printf("%d: %d\n", args_reducer->id, args_reducer->mapper_results[i][args_reducer->id - 2]->val);
-    //     }
-    // }
     for (int i = 0; i < args_reducer->M; i++) {
         for (; args_reducer->mapper_results[i][args_reducer->id - args_reducer->M] != NULL;
          args_reducer->mapper_results[i][args_reducer->id - args_reducer->M] = args_reducer->mapper_results[i][args_reducer->id - args_reducer->M]->next) {
-            //printf("ba eo is aici pe avarii %d %d\n",args_reducer->id, (args_reducer->id - args_reducer->M));
             add(&args_reducer->aggregate_list[(args_reducer->id - args_reducer->M)], args_reducer->mapper_results[i][args_reducer->id - args_reducer->M]->val);
-            //printf("aici klan");
         }
     }
-
-    pthread_mutex_unlock(&mutex);
-
+    
+    int count = 0;
+    //printf("%d\n", args_reducer->id - args_reducer->M);
+    for (; al[(args_reducer->id - args_reducer->M)] != NULL; al[(args_reducer->id - args_reducer->M)] = al[(args_reducer->id - args_reducer->M)]->next) {
+        count++;
+        if (is_already(al[(args_reducer->id - args_reducer->M)]->next, al[(args_reducer->id - args_reducer->M)]->val)) {
+            count--;
+        }
+    }
+    
+    //printf("%d: %d\n", args_reducer->id - args_reducer->M + 2, count);
     pthread_exit(NULL);
 }
 
@@ -253,7 +232,6 @@ int main(int argc, char* argv[]){
             build_args_reducer_struct(&args_reducers[M + R - i - 1], M, R, i, tid, mapper_results, aggregate_list);
             pthread_create(&tid[i], NULL, reducer_function, &args_reducers[M + R - i - 1]);
         } else {
-            
             build_args_mapper_struct(&args_mappers[i], M, R, i, N, input_files, mapper_results[i]);
             pthread_create(&tid[i], NULL, mapper_function, &args_mappers[i]);
         }
@@ -263,14 +241,6 @@ int main(int argc, char* argv[]){
 		pthread_join(tid[i], NULL);
 	}
 
-    // for (int i = 0; i < M; i++) {
-    //     printf("%d\n", i);        
-    //     for (int j = 0; j < R; j++) {
-    //         for (; mapper_results[i][j] != NULL; mapper_results[i][j] = mapper_results[i][j]->next) {
-    //             printf("%d: %d\n", j + 2, mapper_results[i][j]->val);
-    //         }
-    //     }
-    // }
     for (int i = 0; i < R; i++) {
         printf("\n%d\n", i + 2);
         for (; aggregate_list[i] != NULL; aggregate_list[i] = aggregate_list[i]->next) {
