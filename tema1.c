@@ -192,7 +192,17 @@ void *reducer_function(void *arg) {
         }
     }
     
-    //printf("%d: %d\n", args_reducer->id - args_reducer->M + 2, count);
+    char* out_name = malloc(sizeof(char*) * 100);
+    strcpy(out_name, "out");
+    char* nr = malloc(sizeof(char*) * 100);
+    sprnitf(nr, "%d", count);
+    strcat(out_name, nr);
+    strcat(out_name, ".txt");
+
+    FILE* out = fopen(out_name, "w");
+    
+
+    printf("%d: %d\n", args_reducer->id - args_reducer->M + 2, count);
     pthread_exit(NULL);
 }
 
@@ -241,12 +251,12 @@ int main(int argc, char* argv[]){
 		pthread_join(tid[i], NULL);
 	}
 
-    for (int i = 0; i < R; i++) {
-        printf("\n%d\n", i + 2);
-        for (; aggregate_list[i] != NULL; aggregate_list[i] = aggregate_list[i]->next) {
-            printf("%d ", aggregate_list[i]->val);
-        }
-    }
+    // for (int i = 0; i < R; i++) {
+    //     printf("\n%d\n", i + 2);
+    //     for (; aggregate_list[i] != NULL; aggregate_list[i] = aggregate_list[i]->next) {
+    //         printf("%d ", aggregate_list[i]->val);
+    //     }
+    // }
 
     fclose(in);
     free(input_files);
