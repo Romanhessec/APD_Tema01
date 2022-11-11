@@ -10,49 +10,20 @@
 pthread_mutex_t mutex;
 pthread_barrier_t barrier;
 bool done = false;
-int mappers_done = 0;
 
+bool nth_root(unsigned int n, unsigned int k) {
+    if (n == 0)
+        return false;
+        
+    unsigned int a = n, b, c, r = k ? n + (n > 1) : n == 1 ;
+    for (; a < r; b = a + (k - 1) * r, a = b / k)
+        for (r = a, a = n, c = k - 1; c && (a /= r); --c);
 
-// used by root function...
-int iPow(int a, int e) {
-    int r = 1;
-    if (e == 0) return r;
-    while (e != 0) {
-        if ((e & 1) == 1) r *= a;
-        e >>= 1;
-        a *= a;
+    unsigned int toMultiply = r;
+    for (int i = k; i > 1; i--){
+        r *= toMultiply;
     }
-    return r;
-}
-
-int root(int a, int n) {
-    int v = 1, bit, tp, t;
-    if (n == 0) return 0; //error: zeroth root is indeterminate!
-    if (n == 1) return a;
-    tp = iPow(v,n);
-    while (tp < a) {    // first power of two such that v**n >= a
-        v <<= 1;
-        tp = iPow(v,n);
-    }
-    if (tp == a) return v;  // answer is a power of two
-    v >>= 1;
-    bit = v >> 1;
-    tp = iPow(v, n);    // v is highest power of two such that v**n < a
-    while (a > tp) {
-        v += bit;       // add bit to value
-        t = iPow(v, n);
-        if (t > a) v -= bit;    // did we add too much?
-        else tp = t;
-        if ( (bit >>= 1) == 0) break;
-    }
-    return v;   // closest integer such that v**n <= a
-}
-
-unsigned nth_root(const unsigned n, const unsigned nth) {
-    unsigned a = n, b, c, r = nth ? n + (n > 1) : n == 1 ;
-    for (; a < r; b = a + (nth - 1) * r, a = b / nth)
-        for (r = a, a = n, c = nth - 1; c && (a /= r); --c);
-    return r;
+    return (n == r);
 }
 
 struct args_reducer {
@@ -110,27 +81,17 @@ void parse_in(FILE* in, char*** input_files, int* N) {
     }
 }
 
-void close_all_files(FILE*** input_files, int* N) {
-    for (int i = 0; i < (*N); i++) {
-        fclose((*input_files)[i]);
-    }
-}
-
-void build_args_reducer_struct(struct args_reducer* args_reducer, int M, int R, int id, pthread_t* tid,
-                                struct node*** mapper_result, struct node** aggregate_list) {
+void build_args_reducer_struct(struct args_reducer* args_reducer, int M, int R, int id, pthread_t* tid, struct node*** mapper_result, struct node** aggregate_list) {
     args_reducer->M = M;
     args_reducer->R = R;
     args_reducer->id = id;
     args_reducer->mutexed = false;
-    //args_reducer->tid = malloc(sizeof(pthread_t) * (M + R));
-    //memcpy(args_reducer->tid, tid, sizeof(pthread_t) * (M + R));
     args_reducer->tid = tid;
     args_reducer->mapper_results = mapper_result;
     args_reducer->aggregate_list = aggregate_list;
 }
 
-void build_args_mapper_struct(struct args_mapper* args_mapper, int M, int R, int id, int N, char** input_files, 
-                                struct node* mapper_result[]) {
+void build_args_mapper_struct(struct args_mapper* args_mapper, int M, int R, int id, int N, char** input_files, struct node* mapper_result[]) {
     args_mapper->M = M;
     args_mapper->R = R;
     args_mapper->id = id;
@@ -139,38 +100,17 @@ void build_args_mapper_struct(struct args_mapper* args_mapper, int M, int R, int
     args_mapper->mapper_results = mapper_result;
 }
 
-int raise_to_power(int number, int exponent) {
-    int to_multiply = number;
-    for (int i = exponent; i > 1; i--) {
-        number *= to_multiply;
-    }
-    return number;
-}
+void write_in_file(int nr, int count) {
+    char* out_name = malloc(sizeof(char*) * 100);
+    strcpy(out_name, "out");
+    char* number_char = malloc(sizeof(char*) * 100);
+    sprintf(number_char, "%d", nr);
+    strcat(out_name, number_char);
+    strcat(out_name, ".txt");
 
-bool is_perfect(int number, int exponent) {
-    
-    if (number == 1)
-        return true;
-    if (number == 0)
-        return false;
-
-    int to_check = 2;
-    //number = 243, exp = 5
-    
-    float radical = sqrt(number);
-    while (true) {
-        int check = raise_to_power(to_check, exponent);
-        if (check > number)
-            break;
-        if (check == number)
-            return true;
-        to_check ++;
-        if (to_check > radical) {
-            break;
-        }
-    }
-
-    return false;
+    sprintf(number_char, "%d", count);
+    FILE* out = fopen(out_name, "w");
+    fputs(number_char, out);
 }
 
 void *mapper_function(void *arg) {
@@ -182,8 +122,6 @@ void *mapper_function(void *arg) {
     char* line = malloc(sizeof(char) * 100);
 
     for (int i = start; i < end; i++) {
-        
-        printf("%d %s\n", args_mapper->id, args_mapper->input_files[i]);
 
         FILE* input = fopen(args_mapper->input_files[i], "r");
         fgets(line, sizeof(char) * 100, input);
@@ -195,21 +133,9 @@ void *mapper_function(void *arg) {
             int number = atoi(line);
 
             for (int k = 2; k < args_mapper->R + 2; k++) {
-
-                // if (is_perfect(number, k)) {
-                //     add(&args_mapper->mapper_results[k - 2], number);
-                // }
-                unsigned popandau = nth_root(number, k);
-                //printf("%d %u %d %d\n", args_mapper->id, popandau, k, number);
-                unsigned popandaoica = popandau;
-                for (int w = k; w > 1; w--) {
-                    popandau *= popandaoica;
-                }
-                if (popandau == number && number != 0) {
+                if (nth_root(number, k)) {
                     add(&args_mapper->mapper_results[k - 2], number);
-                  //  printf("l-am pus\n");
                 }
-                //printf("===========================================\n");
             }
         }
 
@@ -235,6 +161,7 @@ void *reducer_function(void *arg) {
 
     int reducer_id = args_reducer->id - args_reducer->M; //reducers are indexed after M
 
+    //what the fuck did this code do
     for (int i = 0; i < args_reducer->M; i++) {
         for (; args_reducer->mapper_results[i][reducer_id] != NULL;
          args_reducer->mapper_results[i][reducer_id] = args_reducer->mapper_results[i][reducer_id]->next) {
@@ -250,16 +177,7 @@ void *reducer_function(void *arg) {
         }
     }
     
-    char* out_name = malloc(sizeof(char*) * 100);
-    strcpy(out_name, "out");
-    char* nr = malloc(sizeof(char*) * 100);
-    sprintf(nr, "%d", args_reducer->id - args_reducer->M + 2);
-    strcat(out_name, nr);
-    strcat(out_name, ".txt");
-
-    sprintf(nr, "%d", count);
-    FILE* out = fopen(out_name, "w");
-    fputs(nr, out);
+    write_in_file(args_reducer->id - args_reducer->M + 2, count);
     
     pthread_exit(NULL);
 }
