@@ -11,21 +11,6 @@ pthread_mutex_t mutex;
 pthread_barrier_t barrier;
 bool done = false;
 
-bool nth_root(unsigned int n, unsigned int k) {
-    if (n == 0)
-        return false;
-        
-    unsigned int a = n, b, c, r = k ? n + (n > 1) : n == 1 ;
-    for (; a < r; b = a + (k - 1) * r, a = b / k)
-        for (r = a, a = n, c = k - 1; c && (a /= r); --c);
-
-    unsigned int toMultiply = r;
-    for (int i = k; i > 1; i--){
-        r *= toMultiply;
-    }
-    return (n == r);
-}
-
 struct args_reducer {
     int M, R, id;
     bool mutexed;
@@ -47,6 +32,21 @@ struct node {
 
 int min(int a, int b) {
     return a >= b ? b : a;
+}
+
+bool is_perfect(unsigned int n, unsigned int k) {
+    if (n == 0)
+        return false;
+        
+    unsigned int a = n, b, c, r = k ? n + (n > 1) : n == 1 ;
+    for (; a < r; b = a + (k - 1) * r, a = b / k)
+        for (r = a, a = n, c = k - 1; c && (a /= r); --c);
+
+    unsigned int toMultiply = r;
+    for (int i = k; i > 1; i--){
+        r *= toMultiply;
+    }
+    return (n == r);
 }
 
 void get_args(int argc, char **argv, int* M, int* R, FILE** in) {
@@ -116,24 +116,25 @@ void write_in_file(int nr, int count) {
 void *mapper_function(void *arg) {
     
     struct args_mapper* args_mapper = (struct args_mapper*) arg;
-    int start = args_mapper->id * (double) args_mapper->N / args_mapper->M;
-    int end = min((args_mapper->id + 1) * (double) args_mapper->N / args_mapper->M, args_mapper->N);
+    int M = args_mapper->M;
+    int N = args_mapper->N;
+    int id = args_mapper->id;
+    int start = id * (double) N / M;
+    int end = min((id + 1) * (double) N / M, N);
 
     char* line = malloc(sizeof(char) * 100);
 
     for (int i = start; i < end; i++) {
-
         FILE* input = fopen(args_mapper->input_files[i], "r");
         fgets(line, sizeof(char) * 100, input);
         int nr_of_numbers = atoi(line);
         
         for (int j = 0; j < nr_of_numbers; j++) {
-
             fgets(line, sizeof(char) * 100, input);
             int number = atoi(line);
 
             for (int k = 2; k < args_mapper->R + 2; k++) {
-                if (nth_root(number, k)) {
+                if (is_perfect(number, k)) {
                     add(&args_mapper->mapper_results[k - 2], number);
                 }
             }
@@ -152,37 +153,40 @@ void *mapper_function(void *arg) {
 void *reducer_function(void *arg) {
     
     struct args_reducer* args_reducer = (struct args_reducer*) arg;
+    struct node** aggr_list = args_reducer->aggregate_list;
+    struct node*** mapper_results = args_reducer->mapper_results; 
+    int M = args_reducer->M;
+    int id = args_reducer->id;
+
     pthread_mutex_lock(&mutex);
     while (!done) {
     }
     pthread_mutex_unlock(&mutex);
 
-    struct node** al = args_reducer->aggregate_list;
 
-    int reducer_id = args_reducer->id - args_reducer->M; //reducers are indexed after M
+    int reducer_id = id - M; //reducers are indexed after M
 
-    //what the fuck did this code do
-    for (int i = 0; i < args_reducer->M; i++) {
-        for (; args_reducer->mapper_results[i][reducer_id] != NULL;
-         args_reducer->mapper_results[i][reducer_id] = args_reducer->mapper_results[i][reducer_id]->next) {
-            add(&args_reducer->aggregate_list[reducer_id], args_reducer->mapper_results[i][reducer_id]->val);
+    for (int i = 0; i < M; i++) {
+        for (; mapper_results[i][reducer_id] != NULL; 
+         mapper_results[i][reducer_id] = mapper_results[i][reducer_id]->next) {
+            add(&aggr_list[reducer_id], mapper_results[i][reducer_id]->val);
         }
     }
     
     int count = 0;
-    for (; al[reducer_id] != NULL; al[reducer_id] = al[reducer_id]->next) {
+    for (; aggr_list[reducer_id] != NULL; aggr_list[reducer_id] = aggr_list[reducer_id]->next) {
         count++;
-        if (is_already(al[reducer_id]->next, al[reducer_id]->val)) {
+        if (is_already(aggr_list[reducer_id]->next, aggr_list[reducer_id]->val)) {
             count--;
         }
     }
     
-    write_in_file(args_reducer->id - args_reducer->M + 2, count);
+    write_in_file(id - M + 2, count);
     
     pthread_exit(NULL);
 }
 
-int main(int argc, char* argv[]){
+int main(int argc, char* argv[]){   
     int M, R;
     int N; //number of files that mappers will parse (read from FILE* in)
     FILE* in; //test.txt
@@ -214,7 +218,6 @@ int main(int argc, char* argv[]){
     struct args_mapper args_mappers[M];
     
     for (int i = 0; i < M + R; i++) {
-        
         if (i >= M) {
             build_args_reducer_struct(&args_reducers[M + R - i - 1], M, R, i, tid, mapper_results, aggregate_list);
             pthread_create(&tid[i], NULL, reducer_function, &args_reducers[M + R - i - 1]);
@@ -231,5 +234,8 @@ int main(int argc, char* argv[]){
     pthread_barrier_destroy(&barrier);
     fclose(in);
     free(input_files);
+    free (aggregate_list);
+    free(mapper_results);
+
     return 0;
 }
