@@ -9,11 +9,10 @@
 
 pthread_mutex_t mutex;
 pthread_barrier_t barrier;
-bool done = false;
 
 struct args_reducer {
     int M, R, id;
-    bool mutexed;
+    bool* finished;
     struct node*** mapper_results;
     struct node** aggregate_list;
     pthread_t* tid;
@@ -21,6 +20,7 @@ struct args_reducer {
 
 struct args_mapper {
     int M, R, id, N;
+    bool* finished;
     char** input_files;
     struct node** mapper_results;
 };
@@ -34,19 +34,19 @@ int min(int a, int b) {
     return a >= b ? b : a;
 }
 
-bool is_perfect(unsigned int n, unsigned int k) {
-    if (n == 0)
+bool is_perfect(unsigned int nr, unsigned int k) {
+    if (nr == 0)
         return false;
         
-    unsigned int a = n, b, c, r = k ? n + (n > 1) : n == 1 ;
+    unsigned int a = nr, b, c, r = k ? nr + (nr > 1) : nr == 1 ;
     for (; a < r; b = a + (k - 1) * r, a = b / k)
-        for (r = a, a = n, c = k - 1; c && (a /= r); --c);
+        for (r = a, a = nr, c = k - 1; c && (a /= r); --c);
 
     unsigned int toMultiply = r;
     for (int i = k; i > 1; i--){
         r *= toMultiply;
     }
-    return (n == r);
+    return (nr == r);
 }
 
 void get_args(int argc, char **argv, int* M, int* R, FILE** in) {
@@ -81,21 +81,22 @@ void parse_in(FILE* in, char*** input_files, int* N) {
     }
 }
 
-void build_args_reducer_struct(struct args_reducer* args_reducer, int M, int R, int id, pthread_t* tid, struct node*** mapper_result, struct node** aggregate_list) {
+void build_args_reducer_struct(struct args_reducer* args_reducer, int M, int R, int id, bool* finished, pthread_t* tid, struct node*** mapper_result, struct node** aggregate_list) {
     args_reducer->M = M;
     args_reducer->R = R;
     args_reducer->id = id;
-    args_reducer->mutexed = false;
+    args_reducer->finished = finished;
     args_reducer->tid = tid;
     args_reducer->mapper_results = mapper_result;
     args_reducer->aggregate_list = aggregate_list;
 }
 
-void build_args_mapper_struct(struct args_mapper* args_mapper, int M, int R, int id, int N, char** input_files, struct node* mapper_result[]) {
+void build_args_mapper_struct(struct args_mapper* args_mapper, int M, int R, int id, int N, bool* finished, char** input_files, struct node* mapper_result[]) {
     args_mapper->M = M;
     args_mapper->R = R;
     args_mapper->id = id;
     args_mapper->N = N;
+    args_mapper->finished = finished;
     args_mapper->input_files = input_files; 
     args_mapper->mapper_results = mapper_result;
 }
@@ -145,8 +146,8 @@ void *mapper_function(void *arg) {
 
     pthread_barrier_wait(&barrier);
     
-    done = true;
-    
+    *(args_mapper->finished) = true;
+
     pthread_exit(NULL);
 }
 
@@ -157,14 +158,11 @@ void *reducer_function(void *arg) {
     struct node*** mapper_results = args_reducer->mapper_results; 
     int M = args_reducer->M;
     int id = args_reducer->id;
-
-    pthread_mutex_lock(&mutex);
-    while (!done) {
-    }
-    pthread_mutex_unlock(&mutex);
-
-
     int reducer_id = id - M; //reducers are indexed after M
+    
+    pthread_mutex_lock(&mutex);
+    while (!*(args_reducer->finished));
+    pthread_mutex_unlock(&mutex);
 
     for (int i = 0; i < M; i++) {
         for (; mapper_results[i][reducer_id] != NULL; 
@@ -189,6 +187,7 @@ void *reducer_function(void *arg) {
 int main(int argc, char* argv[]){   
     int M, R;
     int N; //number of files that mappers will parse (read from FILE* in)
+    bool finished = false;
     FILE* in; //test.txt
     char** input_files; 
 
@@ -213,23 +212,23 @@ int main(int argc, char* argv[]){
     for (int i = 0; i < R; i++) {
         aggregate_list[i] = NULL; //init, vezi cum merge add din list.c
     }
-
+    
     struct args_reducer args_reducers[R];
     struct args_mapper args_mappers[M];
     
     for (int i = 0; i < M + R; i++) {
         if (i >= M) {
-            build_args_reducer_struct(&args_reducers[M + R - i - 1], M, R, i, tid, mapper_results, aggregate_list);
+            build_args_reducer_struct(&args_reducers[M + R - i - 1], M, R, i, &finished, tid, mapper_results, aggregate_list);
             pthread_create(&tid[i], NULL, reducer_function, &args_reducers[M + R - i - 1]);
         } else {
-            build_args_mapper_struct(&args_mappers[i], M, R, i, N, input_files, mapper_results[i]);
+            build_args_mapper_struct(&args_mappers[i], M, R, i, N, &finished, input_files, mapper_results[i]);
             pthread_create(&tid[i], NULL, mapper_function, &args_mappers[i]);
         }
     }
 
     for (int i = 0; i < M + R; i++) {
 		pthread_join(tid[i], NULL);
-	}
+    }
 
     pthread_barrier_destroy(&barrier);
     fclose(in);
