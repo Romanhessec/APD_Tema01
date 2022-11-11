@@ -12,6 +12,49 @@ pthread_barrier_t barrier;
 bool done = false;
 int mappers_done = 0;
 
+
+// used by root function...
+int iPow(int a, int e) {
+    int r = 1;
+    if (e == 0) return r;
+    while (e != 0) {
+        if ((e & 1) == 1) r *= a;
+        e >>= 1;
+        a *= a;
+    }
+    return r;
+}
+
+int root(int a, int n) {
+    int v = 1, bit, tp, t;
+    if (n == 0) return 0; //error: zeroth root is indeterminate!
+    if (n == 1) return a;
+    tp = iPow(v,n);
+    while (tp < a) {    // first power of two such that v**n >= a
+        v <<= 1;
+        tp = iPow(v,n);
+    }
+    if (tp == a) return v;  // answer is a power of two
+    v >>= 1;
+    bit = v >> 1;
+    tp = iPow(v, n);    // v is highest power of two such that v**n < a
+    while (a > tp) {
+        v += bit;       // add bit to value
+        t = iPow(v, n);
+        if (t > a) v -= bit;    // did we add too much?
+        else tp = t;
+        if ( (bit >>= 1) == 0) break;
+    }
+    return v;   // closest integer such that v**n <= a
+}
+
+unsigned nth_root(const unsigned n, const unsigned nth) {
+    unsigned a = n, b, c, r = nth ? n + (n > 1) : n == 1 ;
+    for (; a < r; b = a + (nth - 1) * r, a = b / nth)
+        for (r = a, a = n, c = nth - 1; c && (a /= r); --c);
+    return r;
+}
+
 struct args_reducer {
     int M, R, id;
     bool mutexed;
@@ -153,9 +196,20 @@ void *mapper_function(void *arg) {
 
             for (int k = 2; k < args_mapper->R + 2; k++) {
 
-                if (is_perfect(number, k)) {
-                    add(&args_mapper->mapper_results[k - 2], number);
+                // if (is_perfect(number, k)) {
+                //     add(&args_mapper->mapper_results[k - 2], number);
+                // }
+                unsigned popandau = nth_root(number, k);
+                //printf("%d %u %d %d\n", args_mapper->id, popandau, k, number);
+                unsigned popandaoica = popandau;
+                for (int w = k; w > 1; w--) {
+                    popandau *= popandaoica;
                 }
+                if (popandau == number && number != 0) {
+                    add(&args_mapper->mapper_results[k - 2], number);
+                  //  printf("l-am pus\n");
+                }
+                //printf("===========================================\n");
             }
         }
 
